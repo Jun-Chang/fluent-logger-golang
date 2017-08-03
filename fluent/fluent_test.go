@@ -1,6 +1,7 @@
 package fluent
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"net"
@@ -109,7 +110,7 @@ func Test_New_itShouldUseUnixDomainSocketIfUnixSocketSpecified(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer f.Close()
+	defer f.Close(context.Background())
 	assert.Equal(t, f.Config.FluentNetwork, network)
 	assert.Equal(t, f.Config.FluentSocketPath, socketFile)
 
@@ -123,7 +124,7 @@ func Test_New_itShouldUseUnixDomainSocketIfUnixSocketSpecified(t *testing.T) {
 	}
 	if err == nil {
 		t.Error(err)
-		fUnknown.Close()
+		fUnknown.Close(context.Background())
 		return
 	}
 }
@@ -289,7 +290,7 @@ func TestAsyncConnect(t *testing.T) {
 			t.Errorf("fluent.New() failed with %#v", res.err)
 			return
 		}
-		res.f.Close()
+		res.f.Close(context.Background())
 	case <-time.After(time.Millisecond * 500):
 		t.Error("AsyncConnect must not block")
 	}

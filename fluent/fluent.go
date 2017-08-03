@@ -1,6 +1,7 @@
 package fluent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,6 +57,9 @@ type Fluent struct {
 	muconn       sync.Mutex
 	conn         net.Conn
 	reconnecting bool
+
+	muclosed sync.RWMutex
+	closed   bool
 }
 
 // New creates a new Logger.
@@ -184,6 +188,12 @@ func (f *Fluent) PostRawData(data []byte) {
 }
 
 func (f *Fluent) postRawData(data []byte) error {
+	f.muclosed.RLock()
+	if f.closed {
+		return errors.New("already closed")
+	}
+	f.muclosed.RUnlock()
+
 	if err := f.appendBuffer(data); err != nil {
 		return err
 	}
@@ -225,11 +235,34 @@ func (f *Fluent) EncodeData(tag string, tm time.Time, message interface{}) (data
 }
 
 // Close closes the connection.
-func (f *Fluent) Close() (err error) {
-	if len(f.pending) > 0 {
-		err = f.send()
+func (f *Fluent) Close(ctx context.Context) (err error) {
+	f.muclosed.Lock()
+	if f.closed {
+		return errors.New("already closed")
 	}
-	f.close()
+	f.closed = true
+	f.muclosed.Unlock()
+
+	defer f.close()
+
+	errChan := make(chan error, 1)
+	go func() {
+		for {
+			if len(f.pending) > 0 {
+				if e := f.send(); e != nil {
+					continue
+				}
+			}
+			errChan <- nil
+			return
+		}
+	}()
+
+	select {
+	case err = <-errChan:
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
 	return
 }
 
